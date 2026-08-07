@@ -1,17 +1,18 @@
 # dentek_ms_quote
 
-A new Flutter project.
+Dentek quote builder built with Flutter for Windows, Android, and Web.
 
-## Getting Started
+## GitHub Pages Deployment
 
-This project is a starting point for a Flutter application.
+This repo includes an automated Pages workflow at `.github/workflows/deploy-pages.yml`.
 
-A few resources to get you started if this is your first Flutter project:
+Deployment behavior:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Every push to `main` builds Flutter web with `--base-href /dentek-ms-quote/`.
+- The built site artifact from `build/web` is deployed to GitHub Pages.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Expected Pages URL:
+
+- `https://itsaberhq.github.io/dentek-ms-quote/`
+
+If this is the first deployment for the repository, ensure Pages is enabled in repository settings and set to use GitHub Actions.
