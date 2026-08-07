@@ -2,6 +2,8 @@
 
 Dentek quote builder built with Flutter for Windows, Android, and Web.
 
+[![Deploy Flutter Web to GitHub Pages](https://github.com/ITSaberHQ/dentek-ms-quote/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/ITSaberHQ/dentek-ms-quote/actions/workflows/deploy-pages.yml)
+
 ## GitHub Pages Deployment
 
 This repo includes an automated Pages workflow at `.github/workflows/deploy-pages.yml`.
