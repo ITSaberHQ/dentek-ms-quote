@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_email_sender/flutter_email_sender.dart';
@@ -6,9 +8,43 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signature/signature.dart';
 import 'package:universal_io/io.dart' as io;
 import 'package:url_launcher/url_launcher.dart';
+
+const String _masterServicesAgreementText = '''
+Thank you for trusting Dentek Systems, Inc. ("DSI") to provide professional information technology services. This Master Services Agreement governs our business relationship with you, so please read this document carefully and keep a copy for your records.
+
+SCOPE
+This Agreement applies to the services described in your quote, proposal, service order, statement of work, or similar document. The services are provided as described in the quote and the Services Guide. Any services outside the quote are out of scope unless we expressly agree to them in writing.
+
+IMPLEMENTATION
+We may provide advice, recommendations, and implementation support related to your environment. You are responsible for following our advice promptly and for maintaining the required hardware, software, and security conditions necessary for the services. We may need to coordinate with third-party providers and resellers, and those third-party services are provided on an "as is" basis.
+
+FEES AND PAYMENT
+You agree to pay the fees, costs, and expenses described in each quote and services guide. You are also responsible for applicable taxes, applicable miscellaneous expenses, and any third-party or access-license costs. Fees that remain unpaid for more than thirty days may accrue interest, and we may suspend services if undisputed fees remain unpaid.
+
+LIMITED WARRANTIES; LIMITATIONS OF LIABILITY
+All third-party products and services are provided "as is" and may not be returnable or guaranteed. DSI does not warrant that any third-party product, service, or solution will be uninterrupted, error-free, or fully effective. Our liability is limited, and we are not liable for indirect, special, consequential, punitive, or lost-profit damages except as otherwise required by law.
+
+CONFIDENTIALITY
+Both parties will protect confidential information and use it only as allowed under this Agreement. We may be required to share information as legally required, and if that occurs we will notify you where permitted by law.
+
+OWNERSHIP
+Each party retains ownership of its own intellectual property. You understand that any software, code, algorithms, or other works created while providing services to you are owned by DSI, and any third-party software is licensed, not sold, to you.
+
+ARBITRATION
+Any dispute, claim, or controversy arising from this Agreement will be settled by arbitration rather than by a judge or jury, except for certain collections actions or small claims matters. The arbitration will occur in Dallas County, Texas, unless the parties agree otherwise.
+
+TERM; TERMINATION
+The agreement and services under a quote remain in effect according to the quote and this Agreement. Either party may terminate for cause if the other party materially breaches the agreement, and DSI may terminate a quote or agreement without cause with advance notice. If services end, your obligations to pay fees and expenses accrued before termination remain in place.
+
+MISCELLANEOUS
+We may update the services guide and the scope of services from time to time, and you agree to follow any changes that materially affect the services. The agreement is governed by the laws of the State of Texas, and the parties consent to the exclusive venue of Dallas County, Texas. Please read this agreement carefully before accepting a quote.
+''';
+const String _masterServicesAgreementUrl =
+    'https://mydentek.com/master-services-agreement.html';
 
 void main() {
   runApp(const DentekQuoteApp());
@@ -84,6 +120,23 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   static const List<double> _onboardingOptions = [0, 600, 1200];
   static const String _defaultQuoteTitle = 'Dentek Services Proposal';
   static const String _defaultTaxState = 'No Tax';
+  static const double _defaultTaxRate = 0.0825;
+  static const Map<String, double> _defaultServicePrices = {
+    'Remote Support Server/Cloud': 0,
+    'Remote Support Workstation': 0,
+    'Anti-Virus': 0,
+    'Onboarding': 0,
+    'Remote Access': 0,
+    'Advanced Threat Protection': 0,
+    'Endpoint Detection': 0,
+    'Server Backup': 0,
+    'Workstation Backup': 0,
+    'O365 Bus Standard': 0,
+    'O365 Bus Premium': 0,
+    'O365 Bus Basic': 0,
+    'Exchange Online P1': 0,
+    'Exchange Online P2': 0,
+  };
   static const Map<String, double> _stateTaxRates = {
     'No Tax': 0,
     'AL': 0.04,
@@ -146,7 +199,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         description: 'Managed remote support for server and cloud systems.',
         category: ServiceCategory.supportBundle,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Remote Support Server/Cloud'] ?? 0,
         isSelected: true,
       ),
       QuoteService(
@@ -154,7 +207,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         description: 'Managed remote support for workstation devices.',
         category: ServiceCategory.supportBundle,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Remote Support Workstation'] ?? 0,
         isSelected: true,
       ),
       QuoteService(
@@ -162,7 +215,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         description: 'Core anti-virus protection service.',
         category: ServiceCategory.supportBundle,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Anti-Virus'] ?? 0,
         isSelected: true,
       ),
       QuoteService(
@@ -170,7 +223,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         description: 'Initial onboarding setup and implementation package.',
         category: ServiceCategory.onboarding,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Onboarding'] ?? 0,
         isSelected: true,
       ),
       QuoteService(
@@ -178,70 +231,70 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         description: 'Secure remote access service.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Remote Access'] ?? 0,
       ),
       QuoteService(
         name: 'Advanced Threat Protection',
         description: 'Advanced threat protection add-on.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Advanced Threat Protection'] ?? 0,
       ),
       QuoteService(
         name: 'Endpoint Detection',
         description: 'Endpoint detection service add-on.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Endpoint Detection'] ?? 0,
       ),
       QuoteService(
         name: 'Server Backup',
         description: 'Server backup service add-on.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Server Backup'] ?? 0,
       ),
       QuoteService(
         name: 'Workstation Backup',
         description: 'Workstation backup service add-on.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Workstation Backup'] ?? 0,
       ),
       QuoteService(
         name: 'O365 Bus Standard',
         description: 'Microsoft 365 Business Standard license.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['O365 Bus Standard'] ?? 0,
       ),
       QuoteService(
         name: 'O365 Bus Premium',
         description: 'Microsoft 365 Business Premium license.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['O365 Bus Premium'] ?? 0,
       ),
       QuoteService(
         name: 'O365 Bus Basic',
         description: 'Microsoft 365 Business Basic license.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['O365 Bus Basic'] ?? 0,
       ),
       QuoteService(
         name: 'Exchange Online P1',
         description: 'Exchange Online Plan 1 license.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Exchange Online P1'] ?? 0,
       ),
       QuoteService(
         name: 'Exchange Online P2',
         description: 'Exchange Online Plan 2 license.',
         category: ServiceCategory.alaCarte,
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: _defaultServicePrices['Exchange Online P2'] ?? 0,
       ),
     ];
   }
@@ -265,10 +318,15 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   Uint8List? _signatureBytes;
   String? _lastInternalPdfPath;
   String _selectedTaxState = _defaultTaxState;
+  double _manualTaxRate = _defaultTaxRate;
   bool _salesViewUnlocked = false;
   bool _showBundleAsBundleTotal = false;
+  bool _showSalesHeaderDetails = true;
 
   final TextEditingController _salesPinController = TextEditingController();
+  final TextEditingController _taxRateController = TextEditingController(
+    text: '8.25',
+  );
 
   List<QuoteService> get _selectedServices =>
       _services.where((service) => service.isSelected).toList();
@@ -285,7 +343,12 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       .where(_isOneTimeService)
       .fold<double>(0, (sum, item) => sum + item.lineTotal);
 
-  double get _selectedTaxRate => _stateTaxRates[_selectedTaxState] ?? 0;
+  double get _selectedTaxRate {
+    if (_selectedTaxState == _defaultTaxState) {
+      return _manualTaxRate;
+    }
+    return _stateTaxRates[_selectedTaxState] ?? _manualTaxRate;
+  }
 
   double get _salesTaxAmount => _oneTimeSubtotal * _selectedTaxRate;
 
@@ -300,9 +363,12 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_handleTabChanged);
     _services = _createDefaultServices()
         .map((service) => service.clone())
         .toList();
+    _taxRateController.text = '8.25';
+    unawaited(_loadSavedServicePrices());
   }
 
   @override
@@ -312,7 +378,21 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     _clientNameController.dispose();
     _quoteNameController.dispose();
     _salesPinController.dispose();
+    _taxRateController.dispose();
     super.dispose();
+  }
+
+  void _handleTabChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    if (_tabController.index == 0) {
+      setState(() {
+        _salesViewUnlocked = false;
+        _salesPinController.clear();
+      });
+    }
   }
 
   void _unlockSalesView() {
@@ -363,9 +443,44 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       _signedDate = null;
       _lastInternalPdfPath = null;
       _selectedTaxState = _defaultTaxState;
+      _manualTaxRate = _defaultTaxRate;
+      _taxRateController.text = '8.25';
+      _showSalesHeaderDetails = true;
     });
+    unawaited(_applySavedServicePrices());
     _signatureController.clear();
     _showMessage('Sales quote reset to default values.');
+  }
+
+  Future<void> _loadSavedServicePrices() async {
+    await _applySavedServicePrices();
+  }
+
+  Future<void> _applySavedServicePrices() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      for (final service in _services) {
+        final savedPrice = prefs.getDouble(_servicePriceKey(service.name));
+        if (savedPrice != null) {
+          service.unitPrice = savedPrice;
+        }
+      }
+    });
+  }
+
+  Future<void> _persistServicePrices() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final service in _services) {
+      await prefs.setDouble(_servicePriceKey(service.name), service.unitPrice);
+    }
+  }
+
+  String _servicePriceKey(String serviceName) {
+    return 'service_price_$serviceName';
   }
 
   Future<void> _captureSignature() async {
@@ -527,7 +642,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 ),
                 pw.SizedBox(height: 4),
                 _pdfSummaryRow(
-                  'Sales Tax ($_selectedTaxState ${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                  'Sales Tax (${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
                   _currency.format(_salesTaxAmount),
                 ),
                 pw.Divider(color: PdfColors.grey500),
@@ -566,6 +681,25 @@ class _QuoteHomePageState extends State<QuoteHomePage>
             pw.SizedBox(height: 8),
             pw.Text('Date Signed: ${DateFormat.yMMMMd().format(_signedDate!)}'),
           ],
+          pw.SizedBox(height: 24),
+          pw.Text(
+            'Terms of Service',
+            style: pw.TextStyle(
+              fontSize: 14,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColor.fromHex('#084C8D'),
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            _masterServicesAgreementText,
+            style: const pw.TextStyle(fontSize: 9, lineSpacing: 1.2),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            _masterServicesAgreementUrl,
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
+          ),
         ],
       ),
     );
@@ -649,7 +783,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 ),
                 pw.SizedBox(height: 4),
                 _pdfSummaryRow(
-                  'Sales Tax ($_selectedTaxState ${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                  'Sales Tax (${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
                   _currency.format(_salesTaxAmount),
                 ),
                 pw.Divider(color: PdfColors.grey500),
@@ -941,243 +1075,172 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       );
     }
 
+    final isCompactLayout = MediaQuery.of(context).size.width < 700;
+    final hasHeaderDetails =
+        _quoteNameController.text.trim().isNotEmpty ||
+        _clientNameController.text.trim().isNotEmpty ||
+        _selectedTaxState != _defaultTaxState ||
+        _manualTaxRate != _defaultTaxRate;
+    final showCompactHeaderSummary =
+        isCompactLayout && hasHeaderDetails && !_showSalesHeaderDetails;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Bundle section view',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Choose how the bundle appears in the quote.',
-                    style: TextStyle(color: Colors.grey.shade700),
-                  ),
+                  if (!showCompactHeaderSummary)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildBundleViewButton(
+                                label: 'Items',
+                                selected: !_showBundleAsBundleTotal,
+                                onPressed: () {
+                                  setState(() {
+                                    _showBundleAsBundleTotal = false;
+                                  });
+                                },
+                              ),
+                              _buildBundleViewButton(
+                                label: 'Bundle total',
+                                selected: _showBundleAsBundleTotal,
+                                onPressed: () {
+                                  setState(() {
+                                    _showBundleAsBundleTotal = true;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isCompactLayout && hasHeaderDetails)
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _showSalesHeaderDetails = false;
+                              });
+                            },
+                            icon: const Icon(Icons.expand_less),
+                          ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Quote details ready',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              _showSalesHeaderDetails = true;
+                            });
+                          },
+                          icon: const Icon(Icons.edit),
+                        ),
+                      ],
+                    ),
+                  if (!showCompactHeaderSummary) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _quoteNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Proposal Title',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _clientNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Client Name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Sales Tax (%)',
+                        border: OutlineInputBorder(),
+                        suffixText: '%',
+                      ),
+                      controller: _taxRateController,
+                      onChanged: (value) {
+                        final parsed = double.tryParse(value);
+                        if (parsed == null) {
+                          return;
+                        }
+                        setState(() {
+                          _manualTaxRate = parsed / 100;
+                          _selectedTaxState = _defaultTaxState;
+                        });
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _buildBundleViewButton(
-                        label: 'Show items',
-                        selected: !_showBundleAsBundleTotal,
-                        onPressed: () {
-                          setState(() {
-                            _showBundleAsBundleTotal = false;
-                          });
-                        },
-                      ),
-                      _buildBundleViewButton(
-                        label: 'Show bundle total',
-                        selected: _showBundleAsBundleTotal,
-                        onPressed: () {
-                          setState(() {
-                            _showBundleAsBundleTotal = true;
-                          });
-                        },
-                      ),
-                    ],
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _openLastInternalPdf,
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('Open Last Internal PDF'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _resetSalesState,
+                          icon: const Icon(Icons.restart_alt),
+                          label: const Text('Start Fresh'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _quoteNameController,
-            decoration: const InputDecoration(
-              labelText: 'Proposal Title',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _clientNameController,
-            decoration: const InputDecoration(
-              labelText: 'Client Name',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: ValueKey(_selectedTaxState),
-            initialValue: _selectedTaxState,
-            decoration: const InputDecoration(
-              labelText: 'Client State (Sales Tax)',
-              border: OutlineInputBorder(),
-            ),
-            items: _stateTaxRates.keys
-                .map(
-                  (state) => DropdownMenuItem<String>(
-                    value: state,
-                    child: Text(
-                      '$state (${(_stateTaxRates[state]! * 100).toStringAsFixed(2)}%)',
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              setState(() {
-                _selectedTaxState = value;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _openLastInternalPdf,
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: const Text('Open Last Internal PDF'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _resetSalesState,
-                  icon: const Icon(Icons.restart_alt),
-                  label: const Text('Start Fresh'),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 8),
           Expanded(
-            child: ListView.builder(
-              itemCount: _services.length,
-              itemBuilder: (context, index) {
-                final service = _services[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                service.name,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            Switch(
-                              value: service.isSelected,
-                              onChanged: (value) {
-                                setState(() {
-                                  service.isSelected = value;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                        Text(service.description),
-                        const SizedBox(height: 8),
-                        Text(
-                          _categoryLabel(service.category),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _billingLabel(service),
-                          style: TextStyle(color: Colors.grey.shade700),
-                        ),
-                        const SizedBox(height: 10),
-                        if (service.category == ServiceCategory.onboarding)
-                          Row(
-                            children: [
-                              const Text('Option:'),
-                              const SizedBox(width: 12),
-                              DropdownButton<double>(
-                                value:
-                                    _onboardingOptions.contains(
-                                      service.unitPrice,
-                                    )
-                                    ? service.unitPrice
-                                    : 0,
-                                items: _onboardingOptions
-                                    .map(
-                                      (option) => DropdownMenuItem<double>(
-                                        value: option,
-                                        child: Text(
-                                          _onboardingOptionLabel(option),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) {
-                                  if (value == null) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    service.unitPrice = value;
-                                    service.quantity = 1;
-                                  });
-                                },
-                              ),
-                            ],
-                          )
-                        else
-                          Row(
-                            children: [
-                              const Text('Qty:'),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                onPressed: () {
-                                  if (service.quantity <= 1) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    service.quantity -= 1;
-                                  });
-                                },
-                                icon: const Icon(Icons.remove_circle_outline),
-                              ),
-                              Text('${service.quantity}'),
-                              IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    service.quantity += 1;
-                                  });
-                                },
-                                icon: const Icon(Icons.add_circle_outline),
-                              ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: () async {
-                                  final value = await _openPriceDialog(
-                                    service.unitPrice,
-                                  );
-                                  if (value == null) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    service.unitPrice = value;
-                                  });
-                                },
-                                child: Text(
-                                  'Price: ${_currency.format(service.unitPrice)}',
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+            child: ListView(
+              children: [
+                _buildServiceSection(
+                  title: 'Remote Support Bundle',
+                  services: _services
+                      .where(
+                        (service) =>
+                            service.category == ServiceCategory.supportBundle,
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 8),
+                _buildServiceSection(
+                  title: 'A La Carte',
+                  services: _services
+                      .where(
+                        (service) =>
+                            service.category == ServiceCategory.alaCarte,
+                      )
+                      .toList(),
+                ),
+              ],
             ),
           ),
         ],
@@ -1236,7 +1299,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                   _buildMoneyRow('One-Time Subtotal', _oneTimeSubtotal),
                   const SizedBox(height: 6),
                   _buildMoneyRow(
-                    'Sales Tax ($_selectedTaxState ${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                    'Sales Tax (${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
                     _salesTaxAmount,
                   ),
                   const Divider(height: 20),
@@ -1251,6 +1314,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          _buildTermsOfServiceSection(),
           const SizedBox(height: 20),
           Text(
             'Client Signature',
@@ -1320,6 +1385,45 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     );
   }
 
+  Widget _buildTermsOfServiceSection() {
+    return Card(
+      child: ExpansionTile(
+        title: const Text('Terms of Service'),
+        initiallyExpanded: false,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          SelectableText(
+            _masterServicesAgreementText,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () async {
+              final uri = Uri.parse(_masterServicesAgreementUrl);
+              if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+                if (!mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Unable to open the agreement link.'),
+                  ),
+                );
+              }
+            },
+            child: Text(
+              _masterServicesAgreementUrl,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBundleSummarySection(String title, List<QuoteService> items) {
     final bundleTotal = items.fold<double>(
       0,
@@ -1340,7 +1444,16 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               ...items.map(
                 (service) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('• ${service.name}'),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: Text('• ${service.name}')),
+                      Text(
+                        'x${service.quantity}',
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1367,6 +1480,146 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     return selected
         ? ElevatedButton(onPressed: onPressed, child: Text(label))
         : OutlinedButton(onPressed: onPressed, child: Text(label));
+  }
+
+  Widget _buildServiceSection({
+    required String title,
+    required List<QuoteService> services,
+  }) {
+    return Card(
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        title: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        initiallyExpanded: false,
+        children: [
+          if (services.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('No services selected in this section.'),
+            )
+          else
+            ...services.map(
+              (service) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildSalesServiceCard(service),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalesServiceCard(QuoteService service) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    service.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Switch(
+                  value: service.isSelected,
+                  onChanged: (value) {
+                    setState(() {
+                      service.isSelected = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            Text(service.description),
+            const SizedBox(height: 8),
+            Text(
+              _billingLabel(service),
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 10),
+            if (service.category == ServiceCategory.onboarding)
+              Row(
+                children: [
+                  const Text('Option:'),
+                  const SizedBox(width: 12),
+                  DropdownButton<double>(
+                    value: _onboardingOptions.contains(service.unitPrice)
+                        ? service.unitPrice
+                        : 0,
+                    items: _onboardingOptions
+                        .map(
+                          (option) => DropdownMenuItem<double>(
+                            value: option,
+                            child: Text(_onboardingOptionLabel(option)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() {
+                        service.unitPrice = value;
+                        service.quantity = 1;
+                      });
+                    },
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  const Text('Qty:'),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      if (service.quantity <= 1) {
+                        return;
+                      }
+                      setState(() {
+                        service.quantity -= 1;
+                      });
+                    },
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                  Text('${service.quantity}'),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        service.quantity += 1;
+                      });
+                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    key: ValueKey('price_button_${service.name}'),
+                    onPressed: () async {
+                      final value = await _openPriceDialog(service.unitPrice);
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() {
+                        service.unitPrice = value;
+                      });
+                      unawaited(_persistServicePrices());
+                    },
+                    child: Text(
+                      'Price: ${_currency.format(service.unitPrice)}',
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildClientSection(String title, List<QuoteService> items) {
@@ -1444,7 +1697,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         ],
       ),
     );
-    controller.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
     return result;
   }
 }

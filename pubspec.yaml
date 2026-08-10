@@ -41,6 +41,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_email_sender: ^7.0.0
   path_provider: ^2.1.5
+  shared_preferences: ^2.2.2
   universal_io: ^2.2.2
 
 dev_dependencies:
