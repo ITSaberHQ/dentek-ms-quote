@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -83,6 +84,132 @@ class QuoteService {
   }
 }
 
+class QuoteDraftServiceSnapshot {
+  QuoteDraftServiceSnapshot({
+    required this.name,
+    required this.quantity,
+    required this.unitPrice,
+    required this.isSelected,
+  });
+
+  final String name;
+  final int quantity;
+  final double unitPrice;
+  final bool isSelected;
+
+  factory QuoteDraftServiceSnapshot.fromService(QuoteService service) {
+    return QuoteDraftServiceSnapshot(
+      name: service.name,
+      quantity: service.quantity,
+      unitPrice: service.unitPrice,
+      isSelected: service.isSelected,
+    );
+  }
+
+  factory QuoteDraftServiceSnapshot.fromJson(Map<String, dynamic> json) {
+    return QuoteDraftServiceSnapshot(
+      name: json['name'] as String? ?? '',
+      quantity: json['quantity'] as int? ?? 1,
+      unitPrice: (json['unitPrice'] as num?)?.toDouble() ?? 0,
+      isSelected: json['isSelected'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'quantity': quantity,
+      'unitPrice': unitPrice,
+      'isSelected': isSelected,
+    };
+  }
+}
+
+class QuoteDraft {
+  QuoteDraft({
+    required this.id,
+    required this.name,
+    required this.quoteTitle,
+    required this.clientName,
+    required this.selectedTaxState,
+    required this.manualTaxRate,
+    required this.showBundleAsBundleTotal,
+    required this.services,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String quoteTitle;
+  final String clientName;
+  final String selectedTaxState;
+  final double manualTaxRate;
+  final bool showBundleAsBundleTotal;
+  final List<QuoteDraftServiceSnapshot> services;
+  final DateTime updatedAt;
+
+  factory QuoteDraft.fromJson(Map<String, dynamic> json) {
+    final rawServices = json['services'];
+    final parsedServices = <QuoteDraftServiceSnapshot>[];
+    if (rawServices is List) {
+      for (final item in rawServices) {
+        if (item is Map<String, dynamic>) {
+          parsedServices.add(QuoteDraftServiceSnapshot.fromJson(item));
+        }
+      }
+    }
+
+    return QuoteDraft(
+      id:
+          json['id'] as String? ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+      name: json['name'] as String? ?? 'Untitled Draft',
+      quoteTitle: json['quoteTitle'] as String? ?? '',
+      clientName: json['clientName'] as String? ?? '',
+      selectedTaxState:
+          json['selectedTaxState'] as String? ??
+          _QuoteHomePageState._defaultTaxState,
+      manualTaxRate:
+          (json['manualTaxRate'] as num?)?.toDouble() ??
+          _QuoteHomePageState._defaultTaxRate,
+      showBundleAsBundleTotal:
+          json['showBundleAsBundleTotal'] as bool? ?? false,
+      services: parsedServices,
+      updatedAt:
+          DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'quoteTitle': quoteTitle,
+      'clientName': clientName,
+      'selectedTaxState': selectedTaxState,
+      'manualTaxRate': manualTaxRate,
+      'showBundleAsBundleTotal': showBundleAsBundleTotal,
+      'services': services.map((service) => service.toJson()).toList(),
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  QuoteDraft copyWith({String? id, String? name, DateTime? updatedAt}) {
+    return QuoteDraft(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      quoteTitle: quoteTitle,
+      clientName: clientName,
+      selectedTaxState: selectedTaxState,
+      manualTaxRate: manualTaxRate,
+      showBundleAsBundleTotal: showBundleAsBundleTotal,
+      services: services,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
 class DentekQuoteApp extends StatelessWidget {
   const DentekQuoteApp({super.key});
 
@@ -121,6 +248,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   static const String _defaultQuoteTitle = 'Dentek Services Proposal';
   static const String _defaultTaxState = 'No Tax';
   static const double _defaultTaxRate = 0.0825;
+  static const String _quoteDraftsKey = 'quote_drafts_v1';
+  static const int _maxSavedDrafts = 20;
   static const Map<String, double> _defaultServicePrices = {
     'Remote Support Server/Cloud': 0,
     'Remote Support Workstation': 0,
@@ -322,6 +451,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   bool _salesViewUnlocked = false;
   bool _showBundleAsBundleTotal = false;
   bool _showSalesHeaderDetails = true;
+  String? _activeDraftId;
+  List<QuoteDraft> _savedDrafts = [];
 
   final TextEditingController _salesPinController = TextEditingController();
   final TextEditingController _taxRateController = TextEditingController(
@@ -369,6 +500,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         .toList();
     _taxRateController.text = '8.25';
     unawaited(_loadSavedServicePrices());
+    unawaited(_loadSavedDrafts());
   }
 
   @override
@@ -446,10 +578,339 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       _manualTaxRate = _defaultTaxRate;
       _taxRateController.text = '8.25';
       _showSalesHeaderDetails = true;
+      _activeDraftId = null;
     });
     unawaited(_applySavedServicePrices());
     _signatureController.clear();
     _showMessage('Sales quote reset to default values.');
+  }
+
+  Future<void> _loadSavedDrafts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_quoteDraftsKey);
+    if (raw == null || raw.trim().isEmpty || !mounted) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return;
+      }
+
+      final drafts = <QuoteDraft>[];
+      for (final item in decoded) {
+        if (item is Map<String, dynamic>) {
+          drafts.add(QuoteDraft.fromJson(item));
+        }
+      }
+
+      drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      setState(() {
+        _savedDrafts = drafts.take(_maxSavedDrafts).toList();
+      });
+    } catch (_) {
+      _showMessage('Unable to read saved drafts on this device.');
+    }
+  }
+
+  Future<void> _persistSavedDrafts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = jsonEncode(
+      _savedDrafts
+          .take(_maxSavedDrafts)
+          .map((draft) => draft.toJson())
+          .toList(),
+    );
+    await prefs.setString(_quoteDraftsKey, payload);
+  }
+
+  String _newDraftId() {
+    return DateTime.now().microsecondsSinceEpoch.toString();
+  }
+
+  String _suggestedDraftName() {
+    final client = _clientNameController.text.trim();
+    if (client.isNotEmpty) {
+      return client;
+    }
+
+    final title = _quoteNameController.text.trim();
+    if (title.isNotEmpty && title != _defaultQuoteTitle) {
+      return title;
+    }
+
+    return 'Quote ${DateFormat.yMd().add_jm().format(DateTime.now())}';
+  }
+
+  QuoteDraft _buildCurrentDraft({required String id, required String name}) {
+    return QuoteDraft(
+      id: id,
+      name: name,
+      quoteTitle: _quoteNameController.text.trim(),
+      clientName: _clientNameController.text.trim(),
+      selectedTaxState: _selectedTaxState,
+      manualTaxRate: _manualTaxRate,
+      showBundleAsBundleTotal: _showBundleAsBundleTotal,
+      services: _services
+          .map((service) => QuoteDraftServiceSnapshot.fromService(service))
+          .toList(),
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  Future<String?> _openDraftNameDialog({
+    required String title,
+    required String actionLabel,
+    required String initialValue,
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Draft Name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) {
+                return;
+              }
+              Navigator.of(context).pop(value);
+            },
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+    return result;
+  }
+
+  Future<void> _saveCurrentDraft() async {
+    final existingDraft = _savedDrafts.where(
+      (draft) => draft.id == _activeDraftId,
+    );
+    final initialName = existingDraft.isEmpty
+        ? _suggestedDraftName()
+        : existingDraft.first.name;
+
+    final name = await _openDraftNameDialog(
+      title: 'Save Quote Draft',
+      actionLabel: 'Save',
+      initialValue: initialName,
+    );
+    if (name == null || name.trim().isEmpty) {
+      return;
+    }
+
+    final draft = _buildCurrentDraft(
+      id: _activeDraftId ?? _newDraftId(),
+      name: name,
+    );
+
+    setState(() {
+      _savedDrafts = [
+        draft,
+        ..._savedDrafts.where((item) => item.id != draft.id),
+      ];
+      if (_savedDrafts.length > _maxSavedDrafts) {
+        _savedDrafts = _savedDrafts.take(_maxSavedDrafts).toList();
+      }
+      _activeDraftId = draft.id;
+    });
+
+    await _persistSavedDrafts();
+    _showMessage('Saved draft "$name" on this device.');
+  }
+
+  void _loadDraft(QuoteDraft draft) {
+    final serviceByName = {for (final item in draft.services) item.name: item};
+
+    setState(() {
+      _quoteNameController.text = draft.quoteTitle.isEmpty
+          ? _defaultQuoteTitle
+          : draft.quoteTitle;
+      _clientNameController.text = draft.clientName;
+      _selectedTaxState = draft.selectedTaxState;
+      _manualTaxRate = draft.manualTaxRate;
+      _taxRateController.text = (_manualTaxRate * 100).toStringAsFixed(2);
+      _showBundleAsBundleTotal = draft.showBundleAsBundleTotal;
+      _activeDraftId = draft.id;
+
+      for (final service in _services) {
+        final snapshot = serviceByName[service.name];
+        if (snapshot == null) {
+          continue;
+        }
+        service.quantity = snapshot.quantity;
+        service.unitPrice = snapshot.unitPrice;
+        service.isSelected = snapshot.isSelected;
+      }
+
+      _signatureBytes = null;
+      _signedDate = null;
+    });
+    _signatureController.clear();
+    _showMessage('Loaded draft "${draft.name}".');
+  }
+
+  Future<void> _duplicateDraft(QuoteDraft draft) async {
+    final name = await _openDraftNameDialog(
+      title: 'Duplicate Draft',
+      actionLabel: 'Duplicate',
+      initialValue: '${draft.name} Copy',
+    );
+    if (name == null || name.trim().isEmpty) {
+      return;
+    }
+
+    final duplicate = draft.copyWith(
+      id: _newDraftId(),
+      name: name,
+      updatedAt: DateTime.now(),
+    );
+
+    setState(() {
+      _savedDrafts = [duplicate, ..._savedDrafts];
+      if (_savedDrafts.length > _maxSavedDrafts) {
+        _savedDrafts = _savedDrafts.take(_maxSavedDrafts).toList();
+      }
+    });
+
+    await _persistSavedDrafts();
+    _showMessage('Draft duplicated as "$name".');
+  }
+
+  Future<void> _deleteDraft(QuoteDraft draft) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Draft?'),
+        content: Text('Delete "${draft.name}" from this device?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    setState(() {
+      _savedDrafts = _savedDrafts.where((item) => item.id != draft.id).toList();
+      if (_activeDraftId == draft.id) {
+        _activeDraftId = null;
+      }
+    });
+
+    await _persistSavedDrafts();
+    _showMessage('Draft deleted.');
+  }
+
+  Future<void> _openSavedDraftsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Saved Drafts (Device Only)'),
+        content: SizedBox(
+          width: 520,
+          child: _savedDrafts.isEmpty
+              ? const Text('No drafts saved yet.')
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _savedDrafts.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final draft = _savedDrafts[index];
+                    final subtitleClient = draft.clientName.trim().isEmpty
+                        ? 'Client not set'
+                        : draft.clientName.trim();
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(draft.name),
+                      subtitle: Text(
+                        '$subtitleClient • ${DateFormat.yMMMd().add_jm().format(draft.updatedAt)}',
+                      ),
+                      trailing: Wrap(
+                        spacing: 6,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _loadDraft(draft);
+                            },
+                            child: const Text('Load'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              unawaited(_duplicateDraft(draft));
+                            },
+                            child: const Text('Duplicate'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              unawaited(_deleteDraft(draft));
+                            },
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleSalesActionSelection(String action) {
+    switch (action) {
+      case 'save_draft':
+        unawaited(_saveCurrentDraft());
+        break;
+      case 'saved_drafts':
+        unawaited(_openSavedDraftsDialog());
+        break;
+      case 'open_internal_pdf':
+        unawaited(_openLastInternalPdf());
+        break;
+      case 'start_fresh':
+        unawaited(_resetSalesState());
+        break;
+    }
   }
 
   Future<void> _loadSavedServicePrices() async {
@@ -1196,22 +1657,75 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                   const SizedBox(height: 10),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _openLastInternalPdf,
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text('Open Last Internal PDF'),
+                    child: PopupMenuButton<String>(
+                      key: const ValueKey('sales_actions_menu_button'),
+                      onSelected: _handleSalesActionSelection,
+                      itemBuilder: (context) => [
+                        const PopupMenuItem<String>(
+                          value: 'save_draft',
+                          child: ListTile(
+                            leading: Icon(Icons.save),
+                            title: Text('Save Draft'),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _resetSalesState,
-                          icon: const Icon(Icons.restart_alt),
-                          label: const Text('Start Fresh'),
+                        PopupMenuItem<String>(
+                          value: 'saved_drafts',
+                          child: ListTile(
+                            leading: const Icon(Icons.history),
+                            title: Text(
+                              'Saved Drafts (${_savedDrafts.length})',
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: 'open_internal_pdf',
+                          child: ListTile(
+                            leading: Icon(Icons.picture_as_pdf),
+                            title: Text('Open Last Internal PDF'),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: 'start_fresh',
+                          child: ListTile(
+                            leading: Icon(Icons.restart_alt),
+                            title: Text('Start Fresh'),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
                         ),
                       ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.menu),
+                            SizedBox(width: 8),
+                            Text('Actions'),
+                          ],
+                        ),
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Drafts are saved only on this device/browser (${_savedDrafts.length}/$_maxSavedDrafts).',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),
