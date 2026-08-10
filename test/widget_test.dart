@@ -88,6 +88,7 @@ void main() {
 
       expect(find.byType(ExpansionTile), findsWidgets);
       expect(find.text('Remote Support Bundle'), findsWidgets);
+      expect(find.text('Onboarding'), findsWidgets);
 
       await tester.ensureVisible(find.text('Remote Support Bundle'));
       await tester.tap(find.text('Remote Support Bundle'));

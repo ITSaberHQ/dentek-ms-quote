@@ -1746,6 +1746,16 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 ),
                 const SizedBox(height: 8),
                 _buildServiceSection(
+                  title: 'Onboarding',
+                  services: _services
+                      .where(
+                        (service) =>
+                            service.category == ServiceCategory.onboarding,
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 8),
+                _buildServiceSection(
                   title: 'A La Carte',
                   services: _services
                       .where(
