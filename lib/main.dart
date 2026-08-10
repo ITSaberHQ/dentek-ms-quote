@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_email_sender/flutter_email_sender.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,36 +15,10 @@ import 'package:signature/signature.dart';
 import 'package:universal_io/io.dart' as io;
 import 'package:url_launcher/url_launcher.dart';
 
-const String _masterServicesAgreementText = '''
-Thank you for trusting Dentek Systems, Inc. ("DSI") to provide professional information technology services. This Master Services Agreement governs our business relationship with you, so please read this document carefully and keep a copy for your records.
-
-SCOPE
-This Agreement applies to the services described in your quote, proposal, service order, statement of work, or similar document. The services are provided as described in the quote and the Services Guide. Any services outside the quote are out of scope unless we expressly agree to them in writing.
-
-IMPLEMENTATION
-We may provide advice, recommendations, and implementation support related to your environment. You are responsible for following our advice promptly and for maintaining the required hardware, software, and security conditions necessary for the services. We may need to coordinate with third-party providers and resellers, and those third-party services are provided on an "as is" basis.
-
-FEES AND PAYMENT
-You agree to pay the fees, costs, and expenses described in each quote and services guide. You are also responsible for applicable taxes, applicable miscellaneous expenses, and any third-party or access-license costs. Fees that remain unpaid for more than thirty days may accrue interest, and we may suspend services if undisputed fees remain unpaid.
-
-LIMITED WARRANTIES; LIMITATIONS OF LIABILITY
-All third-party products and services are provided "as is" and may not be returnable or guaranteed. DSI does not warrant that any third-party product, service, or solution will be uninterrupted, error-free, or fully effective. Our liability is limited, and we are not liable for indirect, special, consequential, punitive, or lost-profit damages except as otherwise required by law.
-
-CONFIDENTIALITY
-Both parties will protect confidential information and use it only as allowed under this Agreement. We may be required to share information as legally required, and if that occurs we will notify you where permitted by law.
-
-OWNERSHIP
-Each party retains ownership of its own intellectual property. You understand that any software, code, algorithms, or other works created while providing services to you are owned by DSI, and any third-party software is licensed, not sold, to you.
-
-ARBITRATION
-Any dispute, claim, or controversy arising from this Agreement will be settled by arbitration rather than by a judge or jury, except for certain collections actions or small claims matters. The arbitration will occur in Dallas County, Texas, unless the parties agree otherwise.
-
-TERM; TERMINATION
-The agreement and services under a quote remain in effect according to the quote and this Agreement. Either party may terminate for cause if the other party materially breaches the agreement, and DSI may terminate a quote or agreement without cause with advance notice. If services end, your obligations to pay fees and expenses accrued before termination remain in place.
-
-MISCELLANEOUS
-We may update the services guide and the scope of services from time to time, and you agree to follow any changes that materially affect the services. The agreement is governed by the laws of the State of Texas, and the parties consent to the exclusive venue of Dallas County, Texas. Please read this agreement carefully before accepting a quote.
-''';
+const String _masterServicesAgreementAssetPath = 'agreement_extracted.txt';
+const String _masterServicesAgreementFallbackText =
+    'The full Master Services Agreement text could not be loaded from local assets. '
+    'Use the official agreement link below.';
 const String _masterServicesAgreementUrl =
     'https://mydentek.com/master-services-agreement.html';
 
@@ -453,6 +428,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   bool _showSalesHeaderDetails = true;
   String? _activeDraftId;
   List<QuoteDraft> _savedDrafts = [];
+  String _masterServicesAgreementText = _masterServicesAgreementFallbackText;
 
   final TextEditingController _salesPinController = TextEditingController();
   final TextEditingController _taxRateController = TextEditingController(
@@ -501,6 +477,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     _taxRateController.text = '8.25';
     unawaited(_loadSavedServicePrices());
     unawaited(_loadSavedDrafts());
+    unawaited(_loadMasterServicesAgreementText());
   }
 
   @override
@@ -611,6 +588,29 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       });
     } catch (_) {
       _showMessage('Unable to read saved drafts on this device.');
+    }
+  }
+
+  Future<void> _loadMasterServicesAgreementText() async {
+    try {
+      final agreementText = await rootBundle.loadString(
+        _masterServicesAgreementAssetPath,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _masterServicesAgreementText = agreementText.trim();
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _masterServicesAgreementText = _masterServicesAgreementFallbackText;
+      });
     }
   }
 
