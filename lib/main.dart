@@ -265,29 +265,33 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   Uint8List? _signatureBytes;
   String? _lastInternalPdfPath;
   String _selectedTaxState = _defaultTaxState;
+  bool _salesViewUnlocked = false;
+  bool _showBundleAsBundleTotal = false;
+
+  final TextEditingController _salesPinController = TextEditingController();
 
   List<QuoteService> get _selectedServices =>
       _services.where((service) => service.isSelected).toList();
 
-    bool _isOneTimeService(QuoteService service) {
+  bool _isOneTimeService(QuoteService service) {
     return service.category == ServiceCategory.onboarding;
-    }
+  }
 
-    double get _monthlyRecurringSubtotal => _selectedServices
+  double get _monthlyRecurringSubtotal => _selectedServices
       .where((service) => !_isOneTimeService(service))
       .fold<double>(0, (sum, item) => sum + item.lineTotal);
 
-    double get _oneTimeSubtotal => _selectedServices
+  double get _oneTimeSubtotal => _selectedServices
       .where(_isOneTimeService)
       .fold<double>(0, (sum, item) => sum + item.lineTotal);
 
-    double get _selectedTaxRate => _stateTaxRates[_selectedTaxState] ?? 0;
+  double get _selectedTaxRate => _stateTaxRates[_selectedTaxState] ?? 0;
 
-    double get _salesTaxAmount => _oneTimeSubtotal * _selectedTaxRate;
+  double get _salesTaxAmount => _oneTimeSubtotal * _selectedTaxRate;
 
-    double get _dueTodayTotal => _oneTimeSubtotal + _salesTaxAmount;
+  double get _dueTodayTotal => _oneTimeSubtotal + _salesTaxAmount;
 
-    double get _estimatedFirstInvoiceTotal =>
+  double get _estimatedFirstInvoiceTotal =>
       _monthlyRecurringSubtotal + _dueTodayTotal;
 
   bool get _isSigned => _signedDate != null && _signatureBytes != null;
@@ -307,7 +311,21 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     _signatureController.dispose();
     _clientNameController.dispose();
     _quoteNameController.dispose();
+    _salesPinController.dispose();
     super.dispose();
+  }
+
+  void _unlockSalesView() {
+    if (_salesPinController.text.trim() == '1972') {
+      setState(() {
+        _salesViewUnlocked = true;
+      });
+      _salesPinController.clear();
+      _showMessage('Sales view unlocked.');
+      return;
+    }
+
+    _showMessage('Incorrect sales pin.');
   }
 
   Future<void> _resetSalesState() async {
@@ -385,6 +403,36 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     pw.Widget buildSection(String title, List<QuoteService> items) {
       if (items.isEmpty) {
         return pw.Container();
+      }
+
+      if (title == 'Remote Support Bundle' && _showBundleAsBundleTotal) {
+        final bundleTotal = items.fold<double>(
+          0,
+          (sum, item) => sum + item.lineTotal,
+        );
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              title,
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColor.fromHex('#084C8D'),
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            ...items.map((service) => pw.Text('• ${service.name}')),
+            pw.SizedBox(height: 8),
+            pw.Row(
+              children: [
+                pw.Expanded(child: pw.Text('Bundle total')),
+                pw.Text(_currency.format(bundleTotal)),
+              ],
+            ),
+            pw.SizedBox(height: 16),
+          ],
+        );
       }
 
       return pw.Column(
@@ -846,10 +894,102 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   }
 
   Widget _buildSalesView() {
+    if (!_salesViewUnlocked) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sales view locked',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Enter the sales PIN to continue.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _salesPinController,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Sales PIN',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _unlockSalesView(),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Use 1972 for now.',
+                    style: TextStyle(color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _unlockSalesView,
+                    icon: const Icon(Icons.lock_open),
+                    label: const Text('Unlock sales view'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bundle section view',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Choose how the bundle appears in the quote.',
+                    style: TextStyle(color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildBundleViewButton(
+                        label: 'Show items',
+                        selected: !_showBundleAsBundleTotal,
+                        onPressed: () {
+                          setState(() {
+                            _showBundleAsBundleTotal = false;
+                          });
+                        },
+                      ),
+                      _buildBundleViewButton(
+                        label: 'Show bundle total',
+                        selected: _showBundleAsBundleTotal,
+                        onPressed: () {
+                          setState(() {
+                            _showBundleAsBundleTotal = true;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _quoteNameController,
             decoration: const InputDecoration(
@@ -1073,7 +1213,10 @@ class _QuoteHomePageState extends State<QuoteHomePage>
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: 16),
-          _buildClientSection('Remote Support Bundle', supportItems),
+          if (_showBundleAsBundleTotal)
+            _buildBundleSummarySection('Remote Support Bundle', supportItems)
+          else
+            _buildClientSection('Remote Support Bundle', supportItems),
           const SizedBox(height: 12),
           _buildClientSection('Onboarding', onboardingItems),
           const SizedBox(height: 12),
@@ -1177,6 +1320,55 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     );
   }
 
+  Widget _buildBundleSummarySection(String title, List<QuoteService> items) {
+    final bundleTotal = items.fold<double>(
+      0,
+      (sum, item) => sum + item.lineTotal,
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 10),
+            if (items.isEmpty)
+              const Text('No services selected in this section.')
+            else ...[
+              ...items.map(
+                (service) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('• ${service.name}'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Expanded(child: Text('Bundle total')),
+                  Text(_currency.format(bundleTotal)),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBundleViewButton({
+    required String label,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    return selected
+        ? ElevatedButton(onPressed: onPressed, child: Text(label))
+        : OutlinedButton(onPressed: onPressed, child: Text(label));
+  }
+
   Widget _buildClientSection(String title, List<QuoteService> items) {
     return Card(
       child: Padding(
@@ -1208,9 +1400,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
 
   Widget _buildMoneyRow(String label, double amount, {bool emphasize = false}) {
     final valueStyle = emphasize
-        ? Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          )
+        ? Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
         : Theme.of(context).textTheme.bodyLarge;
 
     return Row(
