@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_email_sender/flutter_email_sender.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -14,8 +16,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signature/signature.dart';
 import 'package:universal_io/io.dart' as io;
 import 'package:url_launcher/url_launcher.dart';
+import 'web_pdf_download_stub.dart'
+    if (dart.library.html) 'web_pdf_download_web.dart'
+    as web_pdf_download;
 
 const String _masterServicesAgreementAssetPath = 'agreement_extracted.txt';
+const String _logoAssetPath = 'Assets/logo.svg';
 const String _masterServicesAgreementFallbackText =
     'The full Master Services Agreement text could not be loaded from local assets. '
     'Use the official agreement link below.';
@@ -423,12 +429,14 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   String? _lastInternalPdfPath;
   String _selectedTaxState = _defaultTaxState;
   double _manualTaxRate = _defaultTaxRate;
+  bool _includeLogoInPdf = true;
   bool _salesViewUnlocked = false;
   bool _showBundleAsBundleTotal = false;
   bool _showSalesHeaderDetails = true;
   String? _activeDraftId;
   List<QuoteDraft> _savedDrafts = [];
   String _masterServicesAgreementText = _masterServicesAgreementFallbackText;
+  String? _logoSvgMarkup;
 
   final TextEditingController _salesPinController = TextEditingController();
   final TextEditingController _taxRateController = TextEditingController(
@@ -478,6 +486,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     unawaited(_loadSavedServicePrices());
     unawaited(_loadSavedDrafts());
     unawaited(_loadMasterServicesAgreementText());
+    unawaited(_loadLogoSvgMarkup());
   }
 
   @override
@@ -601,7 +610,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       }
 
       setState(() {
-        _masterServicesAgreementText = agreementText.trim();
+        _masterServicesAgreementText = _sanitizeForPdfFont(
+          agreementText.trim(),
+        );
       });
     } catch (_) {
       if (!mounted) {
@@ -609,7 +620,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       }
 
       setState(() {
-        _masterServicesAgreementText = _masterServicesAgreementFallbackText;
+        _masterServicesAgreementText = _sanitizeForPdfFont(
+          _masterServicesAgreementFallbackText,
+        );
       });
     }
   }
@@ -623,6 +636,26 @@ class _QuoteHomePageState extends State<QuoteHomePage>
           .toList(),
     );
     await prefs.setString(_quoteDraftsKey, payload);
+  }
+
+  Future<void> _loadLogoSvgMarkup() async {
+    try {
+      final markup = await rootBundle.loadString(_logoAssetPath);
+      if (!mounted) {
+        _logoSvgMarkup = markup;
+        return;
+      }
+      setState(() {
+        _logoSvgMarkup = markup;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _logoSvgMarkup = null;
+      });
+    }
   }
 
   String _newDraftId() {
@@ -966,6 +999,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
 
   Future<pw.Document> _buildClientPdf() async {
     final pdf = pw.Document();
+    final baseFont = await PdfGoogleFonts.notoSansRegular();
+    final boldFont = await PdfGoogleFonts.notoSansBold();
     final supportItems = _selectedServices
         .where((service) => service.category == ServiceCategory.supportBundle)
         .toList();
@@ -998,7 +1033,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               ),
             ),
             pw.SizedBox(height: 8),
-            ...items.map((service) => pw.Text('• ${service.name}')),
+            ...items.map((service) => pw.Text('- ${service.name}')),
             pw.SizedBox(height: 8),
             pw.Row(
               children: [
@@ -1064,7 +1099,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     pdf.addPage(
       pw.MultiPage(
         margin: const pw.EdgeInsets.all(24),
+        theme: pw.ThemeData.withFont(base: baseFont, bold: boldFont),
         build: (context) => [
+          _buildPdfLogoHeader(),
           pw.Text(
             _quoteNameController.text.trim().isEmpty
                 ? _defaultQuoteTitle
@@ -1152,10 +1189,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
             ),
           ),
           pw.SizedBox(height: 8),
-          pw.Text(
-            _masterServicesAgreementText,
-            style: const pw.TextStyle(fontSize: 9, lineSpacing: 1.2),
-          ),
+          ..._buildAgreementTextWidgets(_masterServicesAgreementText),
           pw.SizedBox(height: 8),
           pw.Text(
             _masterServicesAgreementUrl,
@@ -1170,11 +1204,15 @@ class _QuoteHomePageState extends State<QuoteHomePage>
 
   Future<pw.Document> _buildInternalPdf() async {
     final pdf = pw.Document();
+    final baseFont = await PdfGoogleFonts.notoSansRegular();
+    final boldFont = await PdfGoogleFonts.notoSansBold();
 
     pdf.addPage(
       pw.MultiPage(
         margin: const pw.EdgeInsets.all(24),
+        theme: pw.ThemeData.withFont(base: baseFont, bold: boldFont),
         build: (context) => [
+          _buildPdfLogoHeader(),
           pw.Text(
             'Internal Implementation Sheet',
             style: pw.TextStyle(
@@ -1275,11 +1313,136 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     return pdf;
   }
 
+  List<pw.Widget> _buildAgreementTextWidgets(String text) {
+    final normalized = _sanitizeForPdfFont(text).replaceAll('\r\n', '\n');
+    final paragraphs = normalized.split('\n\n');
+    final widgets = <pw.Widget>[];
+
+    for (final paragraph in paragraphs) {
+      final trimmed = paragraph.trim();
+      if (trimmed.isEmpty) {
+        continue;
+      }
+
+      for (final chunk in _chunkTextForPdf(trimmed, maxChars: 800)) {
+        widgets.add(
+          pw.Text(
+            chunk,
+            style: const pw.TextStyle(fontSize: 9, lineSpacing: 1.2),
+          ),
+        );
+      }
+      widgets.add(pw.SizedBox(height: 6));
+    }
+
+    if (widgets.isNotEmpty) {
+      widgets.removeLast();
+    }
+
+    return widgets;
+  }
+
+  List<String> _chunkTextForPdf(String text, {required int maxChars}) {
+    if (text.length <= maxChars) {
+      return [text];
+    }
+
+    final words = text.split(RegExp(r'\s+'));
+    final chunks = <String>[];
+    final buffer = StringBuffer();
+
+    for (final word in words) {
+      if (word.isEmpty) {
+        continue;
+      }
+
+      final separator = buffer.isEmpty ? '' : ' ';
+      final nextLength = buffer.length + separator.length + word.length;
+      if (nextLength > maxChars && buffer.isNotEmpty) {
+        chunks.add(buffer.toString());
+        buffer
+          ..clear()
+          ..write(word);
+      } else {
+        buffer
+          ..write(separator)
+          ..write(word);
+      }
+    }
+
+    if (buffer.isNotEmpty) {
+      chunks.add(buffer.toString());
+    }
+
+    return chunks;
+  }
+
+  Future<Uint8List> _buildPdfBytesWithLogoFallback({
+    required Future<pw.Document> Function() build,
+  }) async {
+    try {
+      final pdf = await build();
+      return pdf.save();
+    } catch (error) {
+      if (!_includeLogoInPdf || _logoSvgMarkup == null) {
+        rethrow;
+      }
+
+      debugPrint(
+        'PDF logo rendering failed; retrying without logo. Error: $error',
+      );
+
+      final previousIncludeLogo = _includeLogoInPdf;
+      _includeLogoInPdf = false;
+      try {
+        final fallbackPdf = await build();
+        return fallbackPdf.save();
+      } finally {
+        _includeLogoInPdf = previousIncludeLogo;
+      }
+    }
+  }
+
+  String _sanitizeForPdfFont(String value) {
+    return value
+        .replaceAll('\u2018', "'")
+        .replaceAll('\u2019', "'")
+        .replaceAll('\u201C', '"')
+        .replaceAll('\u201D', '"')
+        .replaceAll('\u2013', '-')
+        .replaceAll('\u2014', '--')
+        .replaceAll('\u2026', '...')
+        .replaceAll('\u00A0', ' ');
+  }
+
+  pw.Widget _buildPdfLogoHeader() {
+    if (!_includeLogoInPdf) {
+      return pw.SizedBox(height: 0);
+    }
+
+    final svgMarkup = _logoSvgMarkup;
+    if (svgMarkup == null || svgMarkup.trim().isEmpty) {
+      return pw.SizedBox(height: 0);
+    }
+
+    try {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(height: 42, child: pw.SvgImage(svg: svgMarkup)),
+          pw.SizedBox(height: 12),
+        ],
+      );
+    } catch (_) {
+      return pw.SizedBox(height: 0);
+    }
+  }
+
   pw.Widget _pdfCell(String value, {bool isHeader = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(6),
       child: pw.Text(
-        value,
+        _sanitizeForPdfFont(value),
         style: pw.TextStyle(
           fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
           fontSize: 10,
@@ -1296,9 +1459,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Expanded(child: pw.Text(label)),
+        pw.Expanded(child: pw.Text(_sanitizeForPdfFont(label))),
         pw.Text(
-          value,
+          _sanitizeForPdfFont(value),
           style: pw.TextStyle(
             fontWeight: emphasize ? pw.FontWeight.bold : pw.FontWeight.normal,
           ),
@@ -1307,36 +1470,88 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     );
   }
 
-  Future<io.File> _savePdfToTemp(String fileName, pw.Document pdf) async {
+  Future<io.File> _savePdfToTemp(String fileName, Uint8List bytes) async {
     final tempPath = io.Directory.systemTemp.path;
     final file = io.File('$tempPath/$fileName');
-    await file.writeAsBytes(await pdf.save(), flush: true);
+    await file.writeAsBytes(bytes, flush: true);
     return file;
   }
 
-  Future<io.File> _savePdfForDesktop(String fileName, pw.Document pdf) async {
+  Future<io.File> _savePdfForDesktop(String fileName, Uint8List bytes) async {
     final downloadsDir = await getDownloadsDirectory();
     final fallbackDir = await getTemporaryDirectory();
     final outputDir = downloadsDir ?? fallbackDir;
     final file = io.File('${outputDir.path}/$fileName');
-    await file.writeAsBytes(await pdf.save(), flush: true);
+    await file.writeAsBytes(bytes, flush: true);
     return file;
   }
 
   Future<void> _sendClientCopy() async {
-    if (!_isSigned) {
-      _showMessage('Please capture a client signature before sending.');
-      return;
+    try {
+      if (!_isSigned) {
+        if (_signatureController.isEmpty) {
+          _showMessage('Please capture a client signature before sending.');
+          return;
+        }
+
+        await _captureSignature();
+        if (!_isSigned) {
+          _showMessage('Unable to capture signature. Please try again.');
+          return;
+        }
+      }
+
+      final bytes = await _buildPdfBytesWithLogoFallback(
+        build: _buildClientPdf,
+      );
+      final fileName =
+          'Dentek_Client_Quote_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+      if (kIsWeb) {
+        try {
+          await web_pdf_download.savePdfBytes(bytes, fileName);
+          _showMessage('Client PDF downloaded.');
+          return;
+        } catch (error) {
+          debugPrint(
+            'Web PDF download failed; trying printing fallback. $error',
+          );
+        }
+
+        try {
+          await Printing.layoutPdf(onLayout: (_) async => bytes);
+          _showMessage('Opened print dialog for client PDF.');
+          return;
+        } catch (error) {
+          debugPrint(
+            'Web print fallback failed; trying share fallback. $error',
+          );
+        }
+      }
+
+      try {
+        await Printing.sharePdf(bytes: bytes, filename: fileName);
+        return;
+      } catch (error) {
+        debugPrint(
+          'Client PDF share failed; using local file fallback. $error',
+        );
+      }
+
+      if (!kIsWeb) {
+        final pdfFile = defaultTargetPlatform == TargetPlatform.android
+            ? await _savePdfToTemp(fileName, bytes)
+            : await _savePdfForDesktop(fileName, bytes);
+
+        _showMessage('Client PDF created at ${pdfFile.path}');
+        return;
+      }
+
+      _showMessage('Unable to open client PDF output in this browser session.');
+    } catch (error) {
+      debugPrint('Client PDF generation failed. $error');
+      _showMessage('Could not generate client PDF. Please try again.');
     }
-
-    final clientPdf = await _buildClientPdf();
-    final bytes = await clientPdf.save();
-
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename:
-          'Dentek_Client_Quote_${DateTime.now().millisecondsSinceEpoch}.pdf',
-    );
   }
 
   Future<void> _sendInternalCopy() async {
@@ -1345,7 +1560,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       return;
     }
 
-    final internalPdf = await _buildInternalPdf();
+    final bytes = await _buildPdfBytesWithLogoFallback(
+      build: _buildInternalPdf,
+    );
     final fileName =
         'Dentek_Internal_${DateTime.now().millisecondsSinceEpoch}.pdf';
 
@@ -1354,10 +1571,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         _lastInternalPdfPath = null;
       });
 
-      await Printing.sharePdf(
-        bytes: await internalPdf.save(),
-        filename: fileName,
-      );
+      await Printing.sharePdf(bytes: bytes, filename: fileName);
 
       final mailto = Uri(
         scheme: 'mailto',
@@ -1381,7 +1595,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final pdfFile = await _savePdfToTemp(fileName, internalPdf);
+      final pdfFile = await _savePdfToTemp(fileName, bytes);
       setState(() {
         _lastInternalPdfPath = pdfFile.path;
       });
@@ -1398,7 +1612,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       return;
     }
 
-    final pdfFile = await _savePdfForDesktop(fileName, internalPdf);
+    final pdfFile = await _savePdfForDesktop(fileName, bytes);
     setState(() {
       _lastInternalPdfPath = pdfFile.path;
     });
@@ -1472,7 +1686,23 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dentek Quote Builder'),
+        title: Row(
+          children: [
+            SvgPicture.asset(
+              _logoAssetPath,
+              height: 32,
+              fit: BoxFit.contain,
+              placeholderBuilder: (context) => const SizedBox(width: 1),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Dentek Quote Builder',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
