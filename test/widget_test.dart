@@ -523,6 +523,41 @@ void main() {
     _expectMoneyRow('Due Today', '\$649.50');
     _expectMoneyRow('Estimated First Invoice', '\$811.88');
   });
+
+  testWidgets('Signed date stays blank until it is applied on purpose', (
+    WidgetTester tester,
+  ) async {
+    _useWideView(tester);
+    await tester.pumpWidget(const DentekQuoteApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Client View'));
+    await tester.pumpAndSettle();
+
+    // Nothing is dated up front, so the sheet can be printed and signed by
+    // hand.
+    expect(find.textContaining('Signed on'), findsNothing);
+    expect(
+      find.text(
+        'Date left blank - the PDF prints a line to sign and date by hand.',
+      ),
+      findsOneWidget,
+    );
+
+    final dateButton = find.byKey(const ValueKey('use_todays_date_button'));
+    await tester.ensureVisible(dateButton);
+    await tester.tap(dateButton);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Signed on'), findsOneWidget);
+
+    final clearButton = find.byKey(const ValueKey('clear_signed_date_button'));
+    await tester.ensureVisible(clearButton);
+    await tester.tap(clearButton);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Signed on'), findsNothing);
+  });
 }
 
 Future<void> _unlockSalesView(WidgetTester tester) async {

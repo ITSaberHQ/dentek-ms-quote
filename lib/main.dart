@@ -554,7 +554,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   double get _estimatedFirstInvoiceTotal =>
       _monthlyRecurringSubtotal + _monthlySalesTaxAmount + _dueTodayTotal;
 
-  bool get _isSigned => _signedDate != null && _signatureBytes != null;
+  bool get _isSigned => _signatureBytes != null;
 
   @override
   void initState() {
@@ -1081,10 +1081,9 @@ class _QuoteHomePageState extends State<QuoteHomePage>
 
     setState(() {
       _signatureBytes = pngData;
-      _signedDate = DateTime.now();
     });
 
-    _showMessage('Proposal signed and date applied automatically.');
+    _showMessage('Signature captured. Add the date or leave it blank.');
   }
 
   Future<pw.Document> _buildClientPdf() async {
@@ -1275,7 +1274,11 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               ),
             ),
             pw.SizedBox(height: 8),
-            pw.Text('Date Signed: ${DateFormat.yMMMMd().format(_signedDate!)}'),
+            pw.Text(
+              _signedDate == null
+                  ? 'Date Signed: ______________________'
+                  : 'Date Signed: ${DateFormat.yMMMMd().format(_signedDate!)}',
+            ),
           ],
           pw.SizedBox(height: 24),
           pw.Text(
@@ -2337,15 +2340,43 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 icon: const Icon(Icons.clear),
                 label: const Text('Clear Signature'),
               ),
+              OutlinedButton.icon(
+                key: const ValueKey('use_todays_date_button'),
+                onPressed: () {
+                  setState(() {
+                    _signedDate = DateTime.now();
+                  });
+                },
+                icon: const Icon(Icons.today),
+                label: const Text("Use Today's Date"),
+              ),
             ],
           ),
-          if (_signedDate != null) ...[
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
+          if (_signedDate == null)
             Text(
-              'Signed on ${DateFormat.yMMMMd().add_jm().format(_signedDate!)}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              'Date left blank - the PDF prints a line to sign and date by hand.',
+              style: Theme.of(context).textTheme.bodySmall,
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Signed on ${DateFormat.yMMMMd().add_jm().format(_signedDate!)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextButton(
+                  key: const ValueKey('clear_signed_date_button'),
+                  onPressed: () {
+                    setState(() {
+                      _signedDate = null;
+                    });
+                  },
+                  child: const Text('Clear Date'),
+                ),
+              ],
             ),
-          ],
           const SizedBox(height: 20),
           Wrap(
             spacing: 10,
