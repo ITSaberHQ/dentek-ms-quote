@@ -558,6 +558,31 @@ void main() {
 
     expect(find.textContaining('Signed on'), findsNothing);
   });
+
+  testWidgets('Client PDF export is not gated behind a signature', (
+    WidgetTester tester,
+  ) async {
+    _useWideView(tester);
+    await tester.pumpWidget(const DentekQuoteApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Client View'));
+    await tester.pumpAndSettle();
+
+    final sendButton = find.text('Send Client PDF');
+    await tester.ensureVisible(sendButton);
+    await tester.tap(sendButton);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    // The export runs on an unsigned quote instead of refusing it. PDF
+    // rendering itself needs assets this test environment cannot fetch, so
+    // only the refusal is asserted here.
+    expect(
+      find.text('Please capture a client signature before sending.'),
+      findsNothing,
+    );
+  });
 }
 
 Future<void> _unlockSalesView(WidgetTester tester) async {

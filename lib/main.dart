@@ -1256,30 +1256,30 @@ class _QuoteHomePageState extends State<QuoteHomePage>
             ),
           ),
           pw.SizedBox(height: 24),
-          if (_signatureBytes != null) ...[
-            pw.Text(
-              'Client Signature',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          pw.Text(
+            'Client Signature',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Container(
+            height: 80,
+            width: 220,
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey500),
             ),
-            pw.SizedBox(height: 8),
-            pw.Container(
-              height: 80,
-              width: 220,
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey500),
-              ),
-              child: pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
-                child: pw.Image(pw.MemoryImage(_signatureBytes!)),
-              ),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Text(
-              _signedDate == null
-                  ? 'Date Signed: ______________________'
-                  : 'Date Signed: ${DateFormat.yMMMMd().format(_signedDate!)}',
-            ),
-          ],
+            child: _signatureBytes == null
+                ? pw.SizedBox()
+                : pw.Padding(
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Image(pw.MemoryImage(_signatureBytes!)),
+                  ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            _signedDate == null
+                ? 'Date Signed: ______________________'
+                : 'Date Signed: ${DateFormat.yMMMMd().format(_signedDate!)}',
+          ),
           pw.SizedBox(height: 24),
           pw.Text(
             'Terms of Service',
@@ -1705,17 +1705,11 @@ class _QuoteHomePageState extends State<QuoteHomePage>
 
   Future<void> _sendClientCopy() async {
     try {
-      if (!_isSigned) {
-        if (_signatureController.isEmpty) {
-          _showMessage('Please capture a client signature before sending.');
-          return;
-        }
-
+      // An unsigned quote is still worth exporting, since it can be printed
+      // and signed by hand. Strokes that are on the pad but were never
+      // confirmed are captured on the way out so they are not lost.
+      if (!_isSigned && _signatureController.isNotEmpty) {
         await _captureSignature();
-        if (!_isSigned) {
-          _showMessage('Unable to capture signature. Please try again.');
-          return;
-        }
       }
 
       final bytes = await _buildPdfBytesWithLogoFallback(
