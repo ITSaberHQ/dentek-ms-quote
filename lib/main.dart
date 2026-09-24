@@ -44,6 +44,7 @@ class QuoteService {
     this.isSelected = false,
     this.note = '',
     this.showNoteOnQuote = true,
+    this.showRateOnQuote = true,
   });
 
   final String name;
@@ -54,6 +55,7 @@ class QuoteService {
   bool isSelected;
   String note;
   bool showNoteOnQuote;
+  bool showRateOnQuote;
 
   double get lineTotal => quantity * unitPrice;
 
@@ -67,6 +69,7 @@ class QuoteService {
       isSelected: isSelected,
       note: note,
       showNoteOnQuote: showNoteOnQuote,
+      showRateOnQuote: showRateOnQuote,
     );
   }
 }
@@ -79,6 +82,7 @@ class QuoteDraftServiceSnapshot {
     required this.isSelected,
     required this.note,
     required this.showNoteOnQuote,
+    required this.showRateOnQuote,
   });
 
   final String name;
@@ -87,6 +91,7 @@ class QuoteDraftServiceSnapshot {
   final bool isSelected;
   final String note;
   final bool showNoteOnQuote;
+  final bool showRateOnQuote;
 
   factory QuoteDraftServiceSnapshot.fromService(QuoteService service) {
     return QuoteDraftServiceSnapshot(
@@ -96,6 +101,7 @@ class QuoteDraftServiceSnapshot {
       isSelected: service.isSelected,
       note: service.note,
       showNoteOnQuote: service.showNoteOnQuote,
+      showRateOnQuote: service.showRateOnQuote,
     );
   }
 
@@ -107,6 +113,7 @@ class QuoteDraftServiceSnapshot {
       isSelected: json['isSelected'] as bool? ?? false,
       note: json['note'] as String? ?? '',
       showNoteOnQuote: json['showNoteOnQuote'] as bool? ?? true,
+      showRateOnQuote: json['showRateOnQuote'] as bool? ?? true,
     );
   }
 
@@ -118,6 +125,7 @@ class QuoteDraftServiceSnapshot {
       'isSelected': isSelected,
       'note': note,
       'showNoteOnQuote': showNoteOnQuote,
+      'showRateOnQuote': showRateOnQuote,
     };
   }
 }
@@ -495,10 +503,18 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     return timeblock != null && timeblock.isSelected ? timeblock : null;
   }
 
-  String _timeblockRateSummary(QuoteService timeblock) {
+  /// The sales view always spells the rate out; the client copy only does so
+  /// when the salesperson opted in.
+  String _timeblockHoursSummary(
+    QuoteService timeblock, {
+    required bool includeRate,
+  }) {
     final hoursLabel = timeblock.quantity == 1 ? 'hour' : 'hours';
-    return '${timeblock.quantity} $hoursLabel x '
-        '${_currency.format(timeblock.unitPrice)}/hr';
+    final hours = '${timeblock.quantity} $hoursLabel';
+    if (!includeRate) {
+      return hours;
+    }
+    return '$hours x ${_currency.format(timeblock.unitPrice)}/hr';
   }
 
   void _syncTimeblockControllers() {
@@ -859,6 +875,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         service.isSelected = snapshot.isSelected;
         service.note = snapshot.note;
         service.showNoteOnQuote = snapshot.showNoteOnQuote;
+        service.showRateOnQuote = snapshot.showRateOnQuote;
       }
 
       _signatureBytes = null;
@@ -1391,6 +1408,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     final showNote =
         timeblock.showNoteOnQuote && timeblock.note.trim().isNotEmpty;
 
+    final showRate = timeblock.showRateOnQuote;
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -1409,8 +1428,10 @@ class _QuoteHomePageState extends State<QuoteHomePage>
             0: const pw.FlexColumnWidth(3),
             1: const pw.FlexColumnWidth(2),
             2: const pw.FlexColumnWidth(1),
-            3: const pw.FlexColumnWidth(2),
-            4: const pw.FlexColumnWidth(2),
+            // The rate column drops out entirely when it is hidden, so the
+            // line total shifts left into its place.
+            if (showRate) 3: const pw.FlexColumnWidth(2),
+            (showRate ? 4 : 3): const pw.FlexColumnWidth(2),
           },
           children: [
             pw.TableRow(
@@ -1419,7 +1440,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 _pdfCell('Service', isHeader: true),
                 _pdfCell('Billing', isHeader: true),
                 _pdfCell('Hours', isHeader: true),
-                _pdfCell('Rate / Hour', isHeader: true),
+                if (showRate) _pdfCell('Rate / Hour', isHeader: true),
                 _pdfCell('Line Total', isHeader: true),
               ],
             ),
@@ -1428,7 +1449,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 _pdfCell(timeblock.name),
                 _pdfCell(_billingLabel(timeblock)),
                 _pdfCell('${timeblock.quantity}'),
-                _pdfCell(_currency.format(timeblock.unitPrice)),
+                if (showRate) _pdfCell(_currency.format(timeblock.unitPrice)),
                 _pdfCell(_currency.format(timeblock.lineTotal)),
               ],
             ),
@@ -1446,27 +1467,43 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     );
   }
 
-  /// The internal sheet always carries the note, marked when the client copy
-  /// leaves it out, so the back office sees what was promised either way.
+  /// The internal sheet always carries the note and the rate, marked when the
+  /// client copy leaves either out, so the back office sees both what was
+  /// promised and what the client actually saw.
   List<pw.Widget> _buildTimeblockInternalPdfWidgets() {
     final timeblock = _activeSupportTimeblock;
-    if (timeblock == null || timeblock.note.trim().isEmpty) {
+    if (timeblock == null) {
+      return const [];
+    }
+
+    final hasNote = timeblock.note.trim().isNotEmpty;
+    if (!hasNote && timeblock.showRateOnQuote) {
       return const [];
     }
 
     return [
       pw.SizedBox(height: 10),
-      pw.Text(
-        timeblock.showNoteOnQuote
-            ? 'Support Timeblock note (shown on client quote)'
-            : 'Support Timeblock note (hidden from client quote)',
-        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-      ),
-      pw.SizedBox(height: 4),
-      pw.Text(
-        _sanitizeForPdfFont(timeblock.note.trim()),
-        style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.2),
-      ),
+      if (!timeblock.showRateOnQuote)
+        pw.Text(
+          'Support Timeblock hourly rate '
+          '(${_currency.format(timeblock.unitPrice)}/hr) was hidden from the '
+          'client quote.',
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        ),
+      if (hasNote) ...[
+        if (!timeblock.showRateOnQuote) pw.SizedBox(height: 6),
+        pw.Text(
+          timeblock.showNoteOnQuote
+              ? 'Support Timeblock note (shown on client quote)'
+              : 'Support Timeblock note (hidden from client quote)',
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          _sanitizeForPdfFont(timeblock.note.trim()),
+          style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.2),
+        ),
+      ],
     ];
   }
 
@@ -2444,7 +2481,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         subtitle: Text(
           timeblock == null || !timeblock.isSelected
               ? 'Optional - not included on this quote'
-              : '${_timeblockRateSummary(timeblock)} = '
+              : '${_timeblockHoursSummary(timeblock, includeRate: true)} = '
                     '${_currency.format(timeblock.lineTotal)} / month',
           style: Theme.of(context).textTheme.bodySmall,
         ),
@@ -2551,7 +2588,20 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               'Timeblock total: ${_currency.format(timeblock.lineTotal)} / month',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 12),
+            CheckboxListTile(
+              key: const ValueKey('timeblock_show_rate_checkbox'),
+              value: timeblock.showRateOnQuote,
+              onChanged: (value) {
+                setState(() {
+                  timeblock.showRateOnQuote = value ?? false;
+                });
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Show the hourly rate on the quote'),
+            ),
+            const SizedBox(height: 4),
             TextField(
               key: const ValueKey('timeblock_note_field'),
               controller: _timeblockNoteController,
@@ -2753,7 +2803,12 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text(_timeblockRateSummary(timeblock)),
+                title: Text(
+                  _timeblockHoursSummary(
+                    timeblock,
+                    includeRate: timeblock.showRateOnQuote,
+                  ),
+                ),
                 subtitle: Text(_billingLabel(timeblock)),
                 trailing: Text(_currency.format(timeblock.lineTotal)),
               ),
