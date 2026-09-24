@@ -375,6 +375,79 @@ void main() {
     );
   });
 
+  testWidgets('Hourly rate can be kept off the client quote', (
+    WidgetTester tester,
+  ) async {
+    _useWideView(tester);
+    await tester.pumpWidget(const DentekQuoteApp());
+
+    await _unlockSalesView(tester);
+    await _openTimeblockSection(tester);
+    await _configureTimeblock(
+      tester,
+      hours: '10',
+      rate: '125',
+      note: 'Unused hours roll over for 12 months.',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('timeblock_show_rate_checkbox')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Client View'));
+    await tester.pumpAndSettle();
+
+    // The hours stay as the selling point, the rate does not print, and the
+    // monthly total is unchanged.
+    expect(find.text('10 hours'), findsOneWidget);
+    expect(find.text('10 hours x \$125.00/hr'), findsNothing);
+    expect(find.text('Unused hours roll over for 12 months.'), findsOneWidget);
+    _expectMoneyRow('Monthly Recurring Subtotal', '\$1,250.00');
+  });
+
+  testWidgets('Rate visibility survives a draft round trip', (
+    WidgetTester tester,
+  ) async {
+    _useWideView(tester);
+    await tester.pumpWidget(const DentekQuoteApp());
+
+    await _unlockSalesView(tester);
+    await _openTimeblockSection(tester);
+    await _configureTimeblock(tester, hours: '8', rate: '100', note: '');
+    await tester.tap(
+      find.byKey(const ValueKey('timeblock_show_rate_checkbox')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('sales_actions_menu_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save Draft').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Hidden Rate Draft');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // Turn the rate back on, then reload the draft.
+    await tester.tap(
+      find.byKey(const ValueKey('timeblock_show_rate_checkbox')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('sales_actions_menu_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Saved Drafts (1)').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Load').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Client View'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('8 hours'), findsOneWidget);
+    expect(find.text('8 hours x \$100.00/hr'), findsNothing);
+  });
+
   testWidgets('Timeblock hours, rate and note survive a draft round trip', (
     WidgetTester tester,
   ) async {
