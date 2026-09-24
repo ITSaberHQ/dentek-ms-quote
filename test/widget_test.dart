@@ -323,7 +323,7 @@ void main() {
     expect(find.text('Unused hours roll over for 12 months.'), findsOneWidget);
   });
 
-  testWidgets('Support timeblock bills as monthly recurring and is not taxed', (
+  testWidgets('Support timeblock bills as monthly recurring and is taxed', (
     WidgetTester tester,
   ) async {
     _useWideView(tester);
@@ -337,11 +337,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // Every other default service is priced at 0, so the timeblock is the
-    // entire monthly subtotal, and the taxed one-time bucket stays empty.
+    // entire monthly subtotal. The one-time bucket stays empty, so nothing is
+    // due today, while the recurring tax rides along with the monthly bill.
     _expectMoneyRow('Monthly Recurring Subtotal', '\$1,250.00');
+    _expectMoneyRow('Sales Tax on Monthly (8.25%)', '\$103.13');
     _expectMoneyRow('One-Time Subtotal', '\$0.00');
+    _expectMoneyRow('Sales Tax on One-Time (8.25%)', '\$0.00');
     _expectMoneyRow('Due Today', '\$0.00');
-    _expectMoneyRow('Estimated First Invoice', '\$1,250.00');
+    _expectMoneyRow('Estimated First Invoice', '\$1,353.13');
   });
 
   testWidgets('Timeblock note can be kept off the client quote', (
@@ -494,6 +497,31 @@ void main() {
 
     expect(find.text('6 hours x \$110.00/hr'), findsOneWidget);
     expect(find.text('Block reviewed quarterly.'), findsOneWidget);
+  });
+
+  testWidgets('Sales tax applies to the recurring and one-time buckets', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'service_price_Remote Support Workstation': 100.0,
+      'service_price_Anti-Virus': 50.0,
+      'service_price_Onboarding': 600.0,
+    });
+    _useWideView(tester);
+    await tester.pumpWidget(const DentekQuoteApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Client View'));
+    await tester.pumpAndSettle();
+
+    // Each bucket is taxed at the same rate, but only the one-time tax is
+    // collected today; the recurring tax recurs with the monthly bill.
+    _expectMoneyRow('Monthly Recurring Subtotal', '\$150.00');
+    _expectMoneyRow('Sales Tax on Monthly (8.25%)', '\$12.38');
+    _expectMoneyRow('One-Time Subtotal', '\$600.00');
+    _expectMoneyRow('Sales Tax on One-Time (8.25%)', '\$49.50');
+    _expectMoneyRow('Due Today', '\$649.50');
+    _expectMoneyRow('Estimated First Invoice', '\$811.88');
   });
 }
 

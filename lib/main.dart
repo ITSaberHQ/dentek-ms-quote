@@ -541,12 +541,18 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     return _stateTaxRates[_selectedTaxState] ?? _manualTaxRate;
   }
 
-  double get _salesTaxAmount => _oneTimeSubtotal * _selectedTaxRate;
+  /// Both buckets are taxed, but each tax stays with the charge it belongs to:
+  /// the one-time tax is collected today, the recurring tax rides along with
+  /// the monthly bill.
+  double get _monthlySalesTaxAmount =>
+      _monthlyRecurringSubtotal * _selectedTaxRate;
 
-  double get _dueTodayTotal => _oneTimeSubtotal + _salesTaxAmount;
+  double get _oneTimeSalesTaxAmount => _oneTimeSubtotal * _selectedTaxRate;
+
+  double get _dueTodayTotal => _oneTimeSubtotal + _oneTimeSalesTaxAmount;
 
   double get _estimatedFirstInvoiceTotal =>
-      _monthlyRecurringSubtotal + _dueTodayTotal;
+      _monthlyRecurringSubtotal + _monthlySalesTaxAmount + _dueTodayTotal;
 
   bool get _isSigned => _signedDate != null && _signatureBytes != null;
 
@@ -1220,13 +1226,20 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 ),
                 pw.SizedBox(height: 4),
                 _pdfSummaryRow(
+                  'Sales Tax on Monthly '
+                  '(${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                  _currency.format(_monthlySalesTaxAmount),
+                ),
+                pw.SizedBox(height: 4),
+                _pdfSummaryRow(
                   'One-Time Subtotal',
                   _currency.format(_oneTimeSubtotal),
                 ),
                 pw.SizedBox(height: 4),
                 _pdfSummaryRow(
-                  'Sales Tax (${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
-                  _currency.format(_salesTaxAmount),
+                  'Sales Tax on One-Time '
+                  '(${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                  _currency.format(_oneTimeSalesTaxAmount),
                 ),
                 pw.Divider(color: PdfColors.grey500),
                 _pdfSummaryRow(
@@ -1362,13 +1375,20 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 ),
                 pw.SizedBox(height: 4),
                 _pdfSummaryRow(
+                  'Sales Tax on Monthly '
+                  '(${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                  _currency.format(_monthlySalesTaxAmount),
+                ),
+                pw.SizedBox(height: 4),
+                _pdfSummaryRow(
                   'One-Time Subtotal',
                   _currency.format(_oneTimeSubtotal),
                 ),
                 pw.SizedBox(height: 4),
                 _pdfSummaryRow(
-                  'Sales Tax (${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
-                  _currency.format(_salesTaxAmount),
+                  'Sales Tax on One-Time '
+                  '(${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                  _currency.format(_oneTimeSalesTaxAmount),
                 ),
                 pw.Divider(color: PdfColors.grey500),
                 _pdfSummaryRow(
@@ -2252,11 +2272,18 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                     _monthlyRecurringSubtotal,
                   ),
                   const SizedBox(height: 6),
+                  _buildMoneyRow(
+                    'Sales Tax on Monthly '
+                    '(${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                    _monthlySalesTaxAmount,
+                  ),
+                  const SizedBox(height: 6),
                   _buildMoneyRow('One-Time Subtotal', _oneTimeSubtotal),
                   const SizedBox(height: 6),
                   _buildMoneyRow(
-                    'Sales Tax (${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
-                    _salesTaxAmount,
+                    'Sales Tax on One-Time '
+                    '(${(_selectedTaxRate * 100).toStringAsFixed(2)}%)',
+                    _oneTimeSalesTaxAmount,
                   ),
                   const Divider(height: 20),
                   _buildMoneyRow('Due Today', _dueTodayTotal, emphasize: true),
