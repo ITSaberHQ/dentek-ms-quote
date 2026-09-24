@@ -32,7 +32,7 @@ void main() {
   runApp(const DentekQuoteApp());
 }
 
-enum ServiceCategory { supportBundle, onboarding, alaCarte }
+enum ServiceCategory { supportBundle, supportTimeblock, onboarding, alaCarte }
 
 class QuoteService {
   QuoteService({
@@ -42,6 +42,8 @@ class QuoteService {
     required this.quantity,
     required this.unitPrice,
     this.isSelected = false,
+    this.note = '',
+    this.showNoteOnQuote = true,
   });
 
   final String name;
@@ -50,6 +52,8 @@ class QuoteService {
   int quantity;
   double unitPrice;
   bool isSelected;
+  String note;
+  bool showNoteOnQuote;
 
   double get lineTotal => quantity * unitPrice;
 
@@ -61,6 +65,8 @@ class QuoteService {
       quantity: quantity,
       unitPrice: unitPrice,
       isSelected: isSelected,
+      note: note,
+      showNoteOnQuote: showNoteOnQuote,
     );
   }
 }
@@ -71,12 +77,16 @@ class QuoteDraftServiceSnapshot {
     required this.quantity,
     required this.unitPrice,
     required this.isSelected,
+    required this.note,
+    required this.showNoteOnQuote,
   });
 
   final String name;
   final int quantity;
   final double unitPrice;
   final bool isSelected;
+  final String note;
+  final bool showNoteOnQuote;
 
   factory QuoteDraftServiceSnapshot.fromService(QuoteService service) {
     return QuoteDraftServiceSnapshot(
@@ -84,6 +94,8 @@ class QuoteDraftServiceSnapshot {
       quantity: service.quantity,
       unitPrice: service.unitPrice,
       isSelected: service.isSelected,
+      note: service.note,
+      showNoteOnQuote: service.showNoteOnQuote,
     );
   }
 
@@ -93,6 +105,8 @@ class QuoteDraftServiceSnapshot {
       quantity: json['quantity'] as int? ?? 1,
       unitPrice: (json['unitPrice'] as num?)?.toDouble() ?? 0,
       isSelected: json['isSelected'] as bool? ?? false,
+      note: json['note'] as String? ?? '',
+      showNoteOnQuote: json['showNoteOnQuote'] as bool? ?? true,
     );
   }
 
@@ -102,6 +116,8 @@ class QuoteDraftServiceSnapshot {
       'quantity': quantity,
       'unitPrice': unitPrice,
       'isSelected': isSelected,
+      'note': note,
+      'showNoteOnQuote': showNoteOnQuote,
     };
   }
 }
@@ -228,6 +244,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   static const List<double> _onboardingOptions = [0, 600, 1200];
   static const String _defaultQuoteTitle = 'Dentek Services Proposal';
   static const String _defaultTaxState = 'No Tax';
+  static const String _supportTimeblockName = 'Support Timeblock';
   static const double _defaultTaxRate = 0.0825;
   static const String _quoteDraftsKey = 'quote_drafts_v1';
   static const int _maxSavedDrafts = 20;
@@ -235,6 +252,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     'Remote Support Server/Cloud': 0,
     'Remote Support Workstation': 0,
     'Anti-Virus': 0,
+    _supportTimeblockName: 0,
     'Onboarding': 0,
     'Remote Access': 0,
     'Advanced Threat Protection': 0,
@@ -327,6 +345,13 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         quantity: 1,
         unitPrice: _defaultServicePrices['Anti-Virus'] ?? 0,
         isSelected: true,
+      ),
+      QuoteService(
+        name: _supportTimeblockName,
+        description: 'Prepaid block of support hours billed monthly.',
+        category: ServiceCategory.supportTimeblock,
+        quantity: 0,
+        unitPrice: _defaultServicePrices[_supportTimeblockName] ?? 0,
       ),
       QuoteService(
         name: 'Onboarding',
@@ -442,12 +467,47 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   final TextEditingController _taxRateController = TextEditingController(
     text: '8.25',
   );
+  final TextEditingController _timeblockHoursController =
+      TextEditingController();
+  final TextEditingController _timeblockNoteController =
+      TextEditingController();
 
   List<QuoteService> get _selectedServices =>
       _services.where((service) => service.isSelected).toList();
 
   bool _isOneTimeService(QuoteService service) {
     return service.category == ServiceCategory.onboarding;
+  }
+
+  QuoteService? get _supportTimeblock {
+    for (final service in _services) {
+      if (service.category == ServiceCategory.supportTimeblock) {
+        return service;
+      }
+    }
+    return null;
+  }
+
+  /// The timeblock only reaches the client quote and PDFs once it is switched
+  /// on in the sales view, which is what makes the section optional.
+  QuoteService? get _activeSupportTimeblock {
+    final timeblock = _supportTimeblock;
+    return timeblock != null && timeblock.isSelected ? timeblock : null;
+  }
+
+  String _timeblockRateSummary(QuoteService timeblock) {
+    final hoursLabel = timeblock.quantity == 1 ? 'hour' : 'hours';
+    return '${timeblock.quantity} $hoursLabel x '
+        '${_currency.format(timeblock.unitPrice)}/hr';
+  }
+
+  void _syncTimeblockControllers() {
+    final timeblock = _supportTimeblock;
+    if (timeblock == null) {
+      return;
+    }
+    _timeblockHoursController.text = '${timeblock.quantity}';
+    _timeblockNoteController.text = timeblock.note;
   }
 
   double get _monthlyRecurringSubtotal => _selectedServices
@@ -483,6 +543,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         .map((service) => service.clone())
         .toList();
     _taxRateController.text = '8.25';
+    _syncTimeblockControllers();
     unawaited(_loadSavedServicePrices());
     unawaited(_loadSavedDrafts());
     unawaited(_loadMasterServicesAgreementText());
@@ -497,6 +558,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     _quoteNameController.dispose();
     _salesPinController.dispose();
     _taxRateController.dispose();
+    _timeblockHoursController.dispose();
+    _timeblockNoteController.dispose();
     super.dispose();
   }
 
@@ -566,6 +629,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
       _showSalesHeaderDetails = true;
       _activeDraftId = null;
     });
+    _syncTimeblockControllers();
     unawaited(_applySavedServicePrices());
     _signatureController.clear();
     _showMessage('Sales quote reset to default values.');
@@ -793,11 +857,14 @@ class _QuoteHomePageState extends State<QuoteHomePage>
         service.quantity = snapshot.quantity;
         service.unitPrice = snapshot.unitPrice;
         service.isSelected = snapshot.isSelected;
+        service.note = snapshot.note;
+        service.showNoteOnQuote = snapshot.showNoteOnQuote;
       }
 
       _signatureBytes = null;
       _signedDate = null;
     });
+    _syncTimeblockControllers();
     _signatureController.clear();
     _showMessage('Loaded draft "${draft.name}".');
   }
@@ -1122,6 +1189,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
           ),
           pw.SizedBox(height: 20),
           buildSection('Remote Support Bundle', supportItems),
+          _buildTimeblockPdfSection(),
           buildSection('Onboarding', onboardingItems),
           buildSection('A La Carte Services', alaCarteItems),
           pw.Container(
@@ -1300,6 +1368,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               ],
             ),
           ),
+          ..._buildTimeblockInternalPdfWidgets(),
           if (_signedDate != null) ...[
             pw.SizedBox(height: 10),
             pw.Text(
@@ -1311,6 +1380,94 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     );
 
     return pdf;
+  }
+
+  pw.Widget _buildTimeblockPdfSection() {
+    final timeblock = _activeSupportTimeblock;
+    if (timeblock == null) {
+      return pw.SizedBox(height: 0);
+    }
+
+    final showNote =
+        timeblock.showNoteOnQuote && timeblock.note.trim().isNotEmpty;
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'Support Timeblock',
+          style: pw.TextStyle(
+            fontSize: 14,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColor.fromHex('#084C8D'),
+          ),
+        ),
+        pw.SizedBox(height: 8),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.7),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(3),
+            1: const pw.FlexColumnWidth(2),
+            2: const pw.FlexColumnWidth(1),
+            3: const pw.FlexColumnWidth(2),
+            4: const pw.FlexColumnWidth(2),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                _pdfCell('Service', isHeader: true),
+                _pdfCell('Billing', isHeader: true),
+                _pdfCell('Hours', isHeader: true),
+                _pdfCell('Rate / Hour', isHeader: true),
+                _pdfCell('Line Total', isHeader: true),
+              ],
+            ),
+            pw.TableRow(
+              children: [
+                _pdfCell(timeblock.name),
+                _pdfCell(_billingLabel(timeblock)),
+                _pdfCell('${timeblock.quantity}'),
+                _pdfCell(_currency.format(timeblock.unitPrice)),
+                _pdfCell(_currency.format(timeblock.lineTotal)),
+              ],
+            ),
+          ],
+        ),
+        if (showNote) ...[
+          pw.SizedBox(height: 8),
+          pw.Text(
+            _sanitizeForPdfFont(timeblock.note.trim()),
+            style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.2),
+          ),
+        ],
+        pw.SizedBox(height: 16),
+      ],
+    );
+  }
+
+  /// The internal sheet always carries the note, marked when the client copy
+  /// leaves it out, so the back office sees what was promised either way.
+  List<pw.Widget> _buildTimeblockInternalPdfWidgets() {
+    final timeblock = _activeSupportTimeblock;
+    if (timeblock == null || timeblock.note.trim().isEmpty) {
+      return const [];
+    }
+
+    return [
+      pw.SizedBox(height: 10),
+      pw.Text(
+        timeblock.showNoteOnQuote
+            ? 'Support Timeblock note (shown on client quote)'
+            : 'Support Timeblock note (hidden from client quote)',
+        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      ),
+      pw.SizedBox(height: 4),
+      pw.Text(
+        _sanitizeForPdfFont(timeblock.note.trim()),
+        style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.2),
+      ),
+    ];
   }
 
   List<pw.Widget> _buildAgreementTextWidgets(String text) {
@@ -1664,11 +1821,16 @@ class _QuoteHomePageState extends State<QuoteHomePage>
   }
 
   String _categoryLabel(ServiceCategory category) {
-    return category == ServiceCategory.supportBundle
-        ? 'Remote Support Bundle'
-        : category == ServiceCategory.onboarding
-        ? 'Onboarding'
-        : 'A La Carte';
+    switch (category) {
+      case ServiceCategory.supportBundle:
+        return 'Remote Support Bundle';
+      case ServiceCategory.supportTimeblock:
+        return 'Support Timeblock';
+      case ServiceCategory.onboarding:
+        return 'Onboarding';
+      case ServiceCategory.alaCarte:
+        return 'A La Carte';
+    }
   }
 
   String _billingLabel(QuoteService service) {
@@ -1975,6 +2137,8 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                       .toList(),
                 ),
                 const SizedBox(height: 8),
+                _buildTimeblockSection(),
+                const SizedBox(height: 8),
                 _buildServiceSection(
                   title: 'Onboarding',
                   services: _services
@@ -2034,6 +2198,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
             _buildBundleSummarySection('Remote Support Bundle', supportItems)
           else
             _buildClientSection('Remote Support Bundle', supportItems),
+          _buildClientTimeblockSection(),
           const SizedBox(height: 12),
           _buildClientSection('Onboarding', onboardingItems),
           const SizedBox(height: 12),
@@ -2264,6 +2429,164 @@ class _QuoteHomePageState extends State<QuoteHomePage>
     );
   }
 
+  Widget _buildTimeblockSection() {
+    final timeblock = _supportTimeblock;
+
+    return Card(
+      child: ExpansionTile(
+        key: const ValueKey('timeblock_section'),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        title: Text(
+          'Support Timeblock',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        subtitle: Text(
+          timeblock == null || !timeblock.isSelected
+              ? 'Optional - not included on this quote'
+              : '${_timeblockRateSummary(timeblock)} = '
+                    '${_currency.format(timeblock.lineTotal)} / month',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        initiallyExpanded: false,
+        children: [
+          if (timeblock == null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Support timeblock is unavailable.'),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildSalesTimeblockCard(timeblock),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalesTimeblockCard(QuoteService timeblock) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    timeblock.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Switch(
+                  key: const ValueKey('timeblock_include_switch'),
+                  value: timeblock.isSelected,
+                  onChanged: (value) {
+                    setState(() {
+                      timeblock.isSelected = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            Text(timeblock.description),
+            const SizedBox(height: 8),
+            Text(
+              _billingLabel(timeblock),
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('timeblock_hours_field'),
+                    controller: _timeblockHoursController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Hours',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onChanged: (value) {
+                      final trimmed = value.trim();
+                      // Clearing the field reads as zero hours rather than
+                      // silently keeping the previous count.
+                      final parsed = trimmed.isEmpty
+                          ? 0
+                          : int.tryParse(trimmed);
+                      if (parsed == null || parsed < 0) {
+                        return;
+                      }
+                      setState(() {
+                        timeblock.quantity = parsed;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  key: const ValueKey('timeblock_rate_button'),
+                  onPressed: () async {
+                    final value = await _openPriceDialog(timeblock.unitPrice);
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      timeblock.unitPrice = value;
+                    });
+                    unawaited(_persistServicePrices());
+                  },
+                  child: Text(
+                    'Rate: ${_currency.format(timeblock.unitPrice)}/hr',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Timeblock total: ${_currency.format(timeblock.lineTotal)} / month',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('timeblock_note_field'),
+              controller: _timeblockNoteController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Timeblock note',
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  timeblock.note = value;
+                });
+              },
+            ),
+            CheckboxListTile(
+              key: const ValueKey('timeblock_show_note_checkbox'),
+              value: timeblock.showNoteOnQuote,
+              onChanged: (value) {
+                setState(() {
+                  timeblock.showNoteOnQuote = value ?? false;
+                });
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Show this note on the quote'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSalesServiceCard(QuoteService service) {
     return Card(
       margin: EdgeInsets.zero,
@@ -2400,6 +2723,49 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClientTimeblockSection() {
+    final timeblock = _activeSupportTimeblock;
+    if (timeblock == null) {
+      return const SizedBox.shrink();
+    }
+
+    final showNote =
+        timeblock.showNoteOnQuote && timeblock.note.trim().isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Support Timeblock',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(_timeblockRateSummary(timeblock)),
+                subtitle: Text(_billingLabel(timeblock)),
+                trailing: Text(_currency.format(timeblock.lineTotal)),
+              ),
+              if (showNote) ...[
+                const SizedBox(height: 4),
+                Text(
+                  timeblock.note.trim(),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
