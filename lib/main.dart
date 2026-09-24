@@ -1439,7 +1439,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
               children: [
                 _pdfCell('Service', isHeader: true),
                 _pdfCell('Billing', isHeader: true),
-                _pdfCell('Hours', isHeader: true),
+                _pdfCell('Quantity', isHeader: true),
                 if (showRate) _pdfCell('Rate / Hour', isHeader: true),
                 _pdfCell('Line Total', isHeader: true),
               ],
@@ -2544,7 +2544,7 @@ class _QuoteHomePageState extends State<QuoteHomePage>
                     controller: _timeblockHoursController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Hours',
+                      labelText: 'Quantity',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
